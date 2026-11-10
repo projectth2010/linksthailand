@@ -1,0 +1,15 @@
+{
+    "app_title": "Oz Thai World",
+    "menu_show": "แสดงผล",
+    "menu_member": "สมาชิก",
+    "search_placeholder": "ค้นหาข้อมูล...",
+    "details_title": "รายละเอียด",
+    "back_button": "กลับ",
+    "read_more": "อ่านเพิ่มเติม",
+    "categories": {
+        "Crime": "อาชญากรรม",
+        "Sport": "กีฬา",
+        "Finance": "การเงิน",
+        "Tech": "เทคโนโลยี"
+    }
+}

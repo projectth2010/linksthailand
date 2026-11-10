@@ -1,207 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-    <title>D3.js with Socket.IO</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oz Thai World | 3D Visualization</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap"
+        rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/6.7.0/d3.min.js"></script>
     <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
-    
-    <style>
-        /* Ensure the SVG takes up the full size of its container */
-svg {
-    width: 100%;
-    height: 100%;
-    border: 1px solid #ddd;
-    display: block;
-    margin: 0 auto;
-}
-
-/* General styling */
-body, html {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    overflow: hidden;
-}
-body {
-    backdrop-filter: blur(20px);
-    background-image: url('static/images/bg.jpg'); /* Set the path to your background image */
-    background-size: cover; /* Cover the entire area */
-    background-position: center; /* Center the background image */
-    background-repeat: no-repeat; /* Prevent the image from repeating */
-}
-/* Sticky top bar styling */
-.topbar {
-            position: sticky;
-            top: 0;
-            width: 100%;
-            background-color: rgba(0, 0, 0, 0.8); /* Semi-transparent background */
-            color: white;
-            padding: 10px 20px;
-            z-index: 1000; /* Ensure it stays on top */
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .topbar .menu {
-            display: flex;
-            gap: 15px;
-        }
-
-        .topbar .menu a {
-            color: white;
-            text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            transition: background-color 0.3s;
-        }
-
-        .topbar .menu a:hover {
-            background-color: rgba(255, 255, 255, 0.2);
-        }
-/* General styling */
-body, html {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    overflow: hidden;
-}
-
-body {
-    backdrop-filter: blur(8px);
-    background-image: url('static/images/bg.jpg'); /* Set the path to your background image */
-    background-size: cover; /* Cover the entire area */
-    background-position: center; /* Center the background image */
-    background-repeat: no-repeat; /* Prevent the image from repeating */
-}
-
-svg {
-    width: 100%;
-    height: 100%;
-    border: 1px solid #ddd;
-    display: block;
-    margin: 0 auto;
-}
-
-/* Node styling */
-.node circle {
-    fill: lightgreen;
-    stroke: #333;
-    stroke-width: 1.5px;
-    filter: drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.5)); /* CSS drop shadow */
-}
-
-/* Central node styling */
-.node--central circle {
-    fill: lightblue;
-}
-
-/* Link styling */
-.link {
-    stroke: #999;
-    stroke-opacity: 0.8;
-    stroke-width: 2px;
-    filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.4)); /* CSS drop shadow */
-}
-
-/* Node list styling */
-#node-list {
-    position: absolute;
-    top: 110px;
-    left: 10px;
-    width: 250px;
-    background: #f9f9f9;
-    border: 1px solid #ddd;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    padding: 10px;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-#node-list li {
-    cursor: pointer;
-    padding: 5px;
-    border-bottom: 1px solid #ddd;
-}
-
-#node-list li:hover {
-    background-color: #f0f0f0;
-}
-
-#node-list li.selected {
-    background-color: #e0e0e0;
-}
-
-/* Popup styling */
-.popup {
-    position: fixed;
-    top: 110px;
-    right: 10px;
-    width: 40%;
-    background: white;
-    border: 1px solid #ccc;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    padding: 15px;
-    display: none; /* Hidden by default */
-}
-
-.popup.open {
-    display: block;
-}
-
-.popup-header {
-    font-size: 18px;
-    margin-bottom: 10px;
-}
-
-.popup-description {
-    font-size: 14px;
-}
-
-.popup-close {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 16px;
-    cursor: pointer;
-}
- 
-
-    </style>
+    <link rel="stylesheet" href="static/css/style.css">
 </head>
+
 <body>
-    <div class="topbar">
-        <div class="logo">
-            <h1>Oz Thai World</h1>
-        </div>
-        <div class="menu">
-            <a href="#show">Show</a>
-            <a href="#member">Member</a>
-            <a href="#"> </a>
-        </div>
-         
-    </div>
-    <div class="container">
-        <div id="node-list"></div>
-         
-        <svg width="1000" height="700"> <defs>
-            <filter id="node-shadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="rgba(0, 0, 0, 0.5)" />
-            </filter>
-            <filter id="link-shadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="1" dy="1" stdDeviation="2" flood-color="rgba(0, 0, 0, 0.4)" />
-            </filter>
-        </defs></svg>
-        <div class="popup">
-            <div class="popup-content">
-                <div class="popup-header">
-                    <h3 class="popup-title">Node Details</h3>
-                    <button id="back-button">Back</button>
-                </div>
-                <p class="popup-description"></p>
+    <div id="app-container">
+        <nav class="navbar">
+            <div class="logo-section">
+                <h1 id="txt-app-title">Oz Thai World</h1>
             </div>
-        </div>
+            <div class="nav-actions">
+                <select id="lang-switcher" class="lang-switch">
+                    <option value="th">ภาษาไทย (TH)</option>
+                    <option value="en" selected>English (EN)</option>
+                </select>
+                <div class="menu-links">
+                    <a href="#" class="nav-link" id="txt-menu-show">Show</a>
+                    <a href="#" class="nav-link" id="txt-menu-member">Member</a>
+                </div>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <aside class="sidebar">
+                <div class="search-container">
+                    <input type="text" id="search-input" class="search-input" placeholder="Search details...">
+                </div>
+                <div class="node-list-wrapper">
+                    <div id="node-list"></div>
+                </div>
+            </aside>
+
+            <section id="viz-area">
+                <svg id="main-svg">
+                    <defs>
+                        <!-- 3D Sphere Gradients -->
+                        <radialGradient id="grad-central" cx="50%" cy="50%" r="50%" fx="25%" fy="25%">
+                            <stop offset="0%" style="stop-color:#7dd3fc;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#0369a1;stop-opacity:1" />
+                        </radialGradient>
+                        <radialGradient id="grad-category" cx="50%" cy="50%" r="50%" fx="25%" fy="25%">
+                            <stop offset="0%" style="stop-color:#a5b4fc;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#4338ca;stop-opacity:1" />
+                        </radialGradient>
+                        <!-- Gloss Shadow Filter -->
+                        <filter id="gloss-filter" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur" />
+                            <feOffset in="blur" dx="2" dy="2" result="offsetBlur" />
+                            <feSpecularLighting in="blur" surfaceScale="5" specularConstant="1" specularExponent="20"
+                                lighting-color="#fff" result="spec">
+                                <fePointLight x="-5000" y="-10000" z="20000" />
+                            </feSpecularLighting>
+                            <feComposite in="spec" in2="SourceAlpha" operator="in" result="specOut" />
+                            <feComposite in="SourceGraphic" in2="specOut" operator="over" result="main" />
+                            <feBlend in="main" in2="offsetBlur" mode="normal" />
+                        </filter>
+                    </defs>
+                </svg>
+            </section>
+
+            <div id="details-popup" class="details-popup">
+                <div class="popup-header">
+                    <h3 id="txt-details-title" class="popup-title">Details</h3>
+                    <button id="popup-close" class="close-btn">&times;</button>
+                </div>
+                <div id="popup-body" class="popup-body"></div>
+            </div>
+        </main>
     </div>
     <script src="static/js/script.js"></script>
 </body>
+
 </html>

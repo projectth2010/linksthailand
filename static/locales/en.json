@@ -1,0 +1,15 @@
+{
+    "app_title": "Oz Thai World",
+    "menu_show": "Show",
+    "menu_member": "Member",
+    "search_placeholder": "Search details...",
+    "details_title": "Details",
+    "back_button": "Back",
+    "read_more": "Read more",
+    "categories": {
+        "Crime": "Crime",
+        "Sport": "Sport",
+        "Finance": "Finance",
+        "Tech": "Tech"
+    }
+}

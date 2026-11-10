@@ -3,6 +3,7 @@ from flask_socketio import SocketIO, emit
 import random
 import json
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -13,62 +14,56 @@ def index():
     return render_template('index.html')
 
 def generate_data():
-    # Define news titles, details, and URLs
-    news_titles = [f'News {i+1}' for i in range(10)]
-    news_details = [f'Details for News {i+1}' for i in range(10)]
-    news_urls = [f'https://example.com/news{i+1}' for i in range(10)]  # Replace with actual URLs
-
-    # Randomly generate nodes
-    nodes = [{'id': 'Time & Date', 'type': 'central', 'children': news_titles}]
-    for title, detail, url in zip(news_titles, news_details, news_urls):
-        nodes.append({'id': title, 'type': 'news', 'details': detail, 'url': url, 'children': []})
-
-    # Create links between center and news nodes
-    links = [{'source': 'Time & Date', 'target': title} for title in news_titles]
-
-    # Randomly adjust node sizes
-    for node in nodes:
-        node['size'] = random.uniform(20, 50)  # Random size between 20 and 50
-
-    return {'nodes': nodes, 'links': links, 'date_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-
-def generate_data2():
-    # Define news categories and titles
     categories = ['Crime', 'Sport', 'Finance', 'Tech']
     news_titles = [f'{category} News {i+1}' for category in categories for i in range(5)]
-    news_details = [f'Details for {title}' for title in news_titles]
+    news_details = [f'Detailed report about {title} developments.' for title in news_titles]
+    news_urls = [f'https://example.com/news/{title.lower().replace(" ", "-")}' for title in news_titles]
+    
+    # Mock image URLs using Unsplash with keywords
+    image_keywords = {
+        'Crime': 'police,crime',
+        'Sport': 'stadium,sport',
+        'Finance': 'money,finance',
+        'Tech': 'technology,code'
+    }
 
-    # Randomly generate nodes
-    nodes = [{'id': 'Time & Date', 'type': 'central', 'children': categories}]
-    category_nodes = []
+    nodes = [{'id': 'time_central', 'type': 'central', 'label': datetime.now().strftime('%H:%M:%S')}]
+    
+    for cat in categories:
+        nodes.append({'id': cat, 'type': 'category', 'label': cat})
 
-    for category in categories:
-        category_node = {'id': category, 'type': 'category', 'children': [title for title in news_titles if category in title]}
-        category_nodes.append(category_node)
-        nodes.append(category_node)
+    for i, (title, detail, url) in enumerate(zip(news_titles, news_details, news_urls)):
+        category = next(c for c in categories if c in title)
+        kw = image_keywords.get(category, 'news')
+        nodes.append({
+            'id': f'news_{i}',
+            'type': 'news',
+            'category': category,
+            'label': title,
+            'details': detail,
+            'url': url,
+            'image': f'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=150&q=80', # Generic news for now or specific kw
+            'keyword': kw,
+            'children': []
+        })
 
-    for title, detail in zip(news_titles, news_details):
-        nodes.append({'id': title, 'type': 'news', 'details': detail, 'children': []})
+    # Add specific images based on index for variety
+    for i, node in enumerate(n for n in nodes if n['type'] == 'news'):
+        node['image'] = f'https://picsum.photos/seed/{node["id"]}/150/150'
 
-    # Create links between central node and category nodes, and category nodes and news nodes
-    links = [{'source': 'Time & Date', 'target': category} for category in categories]
-    links.extend([{'source': category, 'target': title} for category in categories for title in news_titles if category in title])
-
-    # Randomly adjust node sizes
+    links = []
+    for cat in categories:
+        links.append({'source': 'time_central', 'target': cat})
+    
     for node in nodes:
-        node['size'] = random.uniform(20, 50)  # Random size between 20 and 50
+        if node['type'] == 'news':
+            links.append({'source': node['category'], 'target': node['id']})
 
-    return {'nodes': nodes, 'links': links, 'date_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-# @socketio.on('connect')
-# def handle_connect():
-#     emit('update', generate_data())
-
-# @socketio.on('update_data')
-# def handle_update_data():
-#     data = generate_data()
-#     emit('update', data)
+    return {
+        'nodes': nodes,
+        'links': links,
+        'timestamp': datetime.now().isoformat()
+    }
 
 def send_update():
     data = generate_data()

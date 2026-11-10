@@ -1,218 +1,183 @@
-const socket = io.connect('http://localhost:5000');  // Replace with your server URL
+let currentLang = 'en';
+let locales = {};
+let graphData = { nodes: [], links: [] };
 
-let svg, width, height;
-let simulation;
-let g;  // Group for transformation
+const socket = io.connect('http://localhost:5000');
+let svg, width, height, simulation, g, defs;
+const zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", zoomed);
 
-socket.on('update', (data) => {
-    createGraph(data);
-});
+async function loadLocales(lang) {
+    try {
+        const response = await fetch(`static/locales/${lang}.json`);
+        locales = await response.json();
+        updateUIText();
+        if (graphData.nodes.length) renderNodeList(graphData.nodes);
+    } catch (err) { console.error("Error loading locales:", err); }
+}
 
-function createGraph(data) {
-    d3.select("svg").selectAll("*").remove();
-    d3.select("#node-list").selectAll("*").remove();
+function updateUIText() {
+    document.getElementById('txt-app-title').textContent = locales.app_title;
+    document.getElementById('txt-menu-show').textContent = locales.menu_show;
+    document.getElementById('txt-menu-member').textContent = locales.menu_member;
+    document.getElementById('txt-details-title').textContent = locales.details_title;
+    document.getElementById('search-input').placeholder = locales.search_placeholder;
+}
 
-    svg = d3.select("svg");
-    width = +svg.attr("width");
-    height = +svg.attr("height");
+function getLocalizedLabel(node) {
+    if (node.type === 'category') return locales.categories[node.id] || node.label;
+    return node.label;
+}
 
-    g = svg.append("g");  // Append a group element for the graph
+function initViz() {
+    const vizArea = document.getElementById('viz-area');
+    width = vizArea.clientWidth; height = vizArea.clientHeight;
+    svg = d3.select("#main-svg").attr("width", width).attr("height", height).call(zoom);
+    g = svg.append("g");
+    defs = svg.select("defs");
 
     simulation = d3.forceSimulation()
-        .force("link", d3.forceLink()
-            .id(d => d.id)
-            .distance(150))  // Set distance between linked nodes
-        .force("charge", d3.forceManyBody()
-            .strength(-150))  // Increase strength to push nodes apart
-        .force("center", d3.forceCenter(width / 2, height / 2));
+        .force("link", d3.forceLink().id(d => d.id).distance(150))
+        .force("charge", d3.forceManyBody().strength(-600))
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("x", d3.forceX(width / 2).strength(0.04))
+        .force("y", d3.forceY(height / 2).strength(0.04))
+        .force("collide", d3.forceCollide().radius(d => (d.type === 'central' ? 80 : (d.type === 'category' ? 60 : 50))).iterations(2))
+        .alphaTarget(0.05); // Keep the simulation moving subtly
 
-    let link = g.selectAll(".link")
-        .data(data.links)
-        .enter().append("line")
-        .attr("class", "link")
-        .attr("stroke", "#999")
-        .attr("stroke-opacity", 0.6)
-        .attr("stroke-width", 2);
-
-    let node = g.selectAll(".node")
-        .data(data.nodes)
-        .enter().append("g")
-        .attr("class", d => `node node--${d.type}`)
-        .on("click", function(event, d) {
-            event.stopPropagation();
-            if (d.children.length) {
-                showChildren(d);
-            } else {
-                showPopup(d);
-            }
-        })
-        .call(d3.drag()
-            .on("start", dragstarted)
-            .on("drag", dragged)
-            .on("end", dragended));
-
-    node.append("circle")
-        .attr("r", d => d.type === 'central' ? 80 : 40)
-        .attr("fill", d => d.type === 'central' ? "lightblue" : "lightgreen");
-
-    node.append("text")
-        .attr("dx", d => d.type === 'central' ? -63 : -25)
-        .attr("dy", 5)
-        .text(d => d.id);
-
-    updateNodeList(data.nodes);
-
-    simulation.nodes(data.nodes);
-    simulation.force("link").links(data.links);
-    simulation.alpha(1).restart();
-
-    simulation.on("tick", () => {
-        link.attr("x1", d => d.source.x)
-            .attr("y1", d => d.source.y)
-            .attr("x2", d => d.target.x)
-            .attr("y2", d => d.target.y);
-
-        node.attr("transform", d => `translate(${d.x},${d.y})`);
+    window.addEventListener('resize', () => {
+        width = vizArea.clientWidth; height = vizArea.clientHeight;
+        svg.attr("width", width).attr("height", height);
+        simulation.force("center", d3.forceCenter(width / 2, height / 2)).restart();
     });
 }
 
-function updateNodeList(nodes) {
-    const nodeList = d3.select("#node-list");
+function zoomed(event) { g.attr("transform", event.transform); }
 
-    const nodeListItems = nodeList.selectAll("li")
-        .data(nodes, d => d.id);
+function updateGraph(data) {
+    graphData = data;
 
-    nodeListItems.enter().append("li")
-        .text(d => d.id)
-        .on("click", function(event, d) {
-            d3.selectAll("#node-list li").style("background-color", "white");
-            d3.select(this).style("background-color", "#e0e0e0");
+    // Create Patterns for Images
+    const patterns = defs.selectAll(".img-pattern")
+        .data(data.nodes.filter(n => n.type === 'news'), d => d.id);
 
-            //displayNodeContent(d);
-            if (d.children.length) {
-                showChildren(d);
-            } else {
-                showPopup(d);
-            }
-            centerNode(d);
-        });
+    patterns.exit().remove();
 
-    nodeListItems.text(d => d.id);
-    nodeListItems.exit().remove();
+    const patternsEnter = patterns.enter().append("pattern")
+        .attr("id", d => `pattern-${d.id}`)
+        .attr("class", "img-pattern")
+        .attr("width", 1)
+        .attr("height", 1)
+        .attr("patternContentUnits", "objectBoundingBox");
+
+    patternsEnter.append("image")
+        .attr("xlink:href", d => d.image)
+        .attr("width", 1)
+        .attr("height", 1)
+        .attr("preserveAspectRatio", "xMidYMid slice");
+
+    // Links
+    const link = g.selectAll(".link").data(data.links, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+    link.exit().remove();
+    const links = link.enter().append("line").attr("class", "link").merge(link);
+
+    // Nodes
+    const node = g.selectAll(".node-group").data(data.nodes, d => d.id);
+    node.exit().remove();
+
+    const nodeEnter = node.enter().append("g")
+        .attr("class", d => `node-group node--${d.type}`)
+        .on("click", (e, d) => showDetails(d))
+        .call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended));
+
+    nodeEnter.append("circle")
+        .attr("class", "node-base")
+        .attr("r", d => d.type === 'central' ? 60 : (d.type === 'category' ? 40 : 35))
+        .attr("fill", d => {
+            if (d.type === 'central') return "url(#grad-central)";
+            if (d.type === 'category') return "url(#grad-category)";
+            return `url(#pattern-${d.id})`;
+        })
+        .style("filter", "url(#gloss-filter)");
+
+    // Add overlay for news images to make them look spherical
+    nodeEnter.filter(d => d.type === 'news').append("circle")
+        .attr("r", 35)
+        .attr("fill", "rgba(255,255,255,0.1)")
+        .attr("stroke", "rgba(255,255,255,0.2)")
+        .attr("stroke-width", 2)
+        .style("pointer-events", "none");
+
+    nodeEnter.append("text")
+        .attr("class", "node-label")
+        .attr("text-anchor", "middle")
+        .attr("dy", d => d.type === 'central' ? 85 : (d.type === 'category' ? 65 : 55));
+
+    const nodes = nodeEnter.merge(node);
+    nodes.select("text").text(d => d.type === 'central' ? d.label : getLocalizedLabel(d));
+
+    simulation.nodes(data.nodes);
+    simulation.force("link").links(data.links);
+    simulation.alpha(0.5).restart();
+
+    simulation.on("tick", () => {
+        links.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+        nodes.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+    renderNodeList(data.nodes);
 }
 
-function displayNodeContent(node) {
-    const content = `Details for ${node.id}`;
-    d3.select("#node-content").html(`<h2>${node.id}</h2><p>${content}</p>`);
+function renderNodeList(nodes) {
+    const list = document.getElementById('node-list');
+    if (!list) return;
+    const searchTerm = document.getElementById('search-input').value.toLowerCase();
+    const filtered = nodes.filter(n => getLocalizedLabel(n).toLowerCase().includes(searchTerm));
+    list.innerHTML = filtered.map(n => `
+        <div class="node-item" onclick="focusNode('${n.id}')">
+            <div class="node-dot dot-${n.type}"></div>
+            <span>${n.type === 'central' ? n.label : getLocalizedLabel(n)}</span>
+        </div>`).join('');
 }
 
-function centerNode(node) {
-    const nodeGroup = g.select(`.node.node--${node.type}`);
-    if (!nodeGroup.empty()) {
-        const nodeData = d3.select(nodeGroup.node()).datum();
-        const targetX = width / 2 - nodeData.x;
-        const targetY = height / 2 - nodeData.y;
-
-        g.transition()
-            .duration(1000)
-            .attr("transform", `translate(${targetX}, ${targetY})`);
+function focusNode(id) {
+    const node = graphData.nodes.find(n => n.id === id);
+    if (node) {
+        const transform = d3.zoomIdentity.translate(width / 2, height / 2).scale(1.2).translate(-node.x, -node.y);
+        svg.transition().duration(750).call(zoom.transform, transform);
+        showDetails(node);
     }
 }
 
-function showChildren(node) {
-    // Filter to get only child nodes
-    const childNodes = data.nodes.filter(d => node.children.includes(d.id));
-    const childLinks = data.links.filter(d => node.children.includes(d.target) || node.children.includes(d.source));
+function showDetails(node) {
+    if (node.type === 'central') return;
+    const popup = document.getElementById('details-popup');
+    const imageUrl = node.image || '';
 
-    // Add child nodes to the graph
-    const newNodes = g.selectAll(".node")
-        .data(childNodes, d => d.id);
-
-    // Enter new nodes
-    const enterNodes = newNodes.enter().append("g")
-        .attr("class", d => `node node--${d.type}`)
-        .on("click", function(event, d) {
-            event.stopPropagation();
-            if (d.children.length) {
-                showChildren(d);
-            } else {
-                showPopup(d);
-            }
-        })
-        .call(d3.drag()
-            .on("start", dragstarted)
-            .on("drag", dragged)
-            .on("end", dragended));
-
-    enterNodes.append("circle")
-        .attr("r", 80)
-        .attr("fill", d => d.type === 'central' ? "lightblue" : "lightgreen");
-
-    enterNodes.append("text")
-        .attr("dy", 4)
-        .attr("text-anchor", "middle")
-        .text(d => d.id);
-
-    newNodes.exit().remove();
-
-    // Add child links to the graph
-    const newLinks = g.selectAll(".link")
-        .data(childLinks, d => `${d.source}-${d.target}`);
-
-    newLinks.enter().append("line")
-        .attr("class", "link")
-        .attr("stroke", "#999")
-        .attr("stroke-opacity", 0.6)
-        .attr("stroke-width", 2);
-
-    newLinks.exit().remove();
-
-    // Update simulation with new nodes and links
-    simulation.nodes(data.nodes);
-    simulation.force("link").links(data.links);
-    simulation.alpha(1).restart();
-
-    // Smoothly transition to new positions
-    simulation.on("tick", () => {
-        g.selectAll(".link")
-            .attr("x1", d => d.source.x)
-            .attr("y1", d => d.source.y)
-            .attr("x2", d => d.target.x)
-            .attr("y2", d => d.target.y);
-
-        g.selectAll(".node")
-            .attr("transform", d => `translate(${d.x},${d.y})`);
-    });
-}
-
-// function showPopup(node) {
-//     const popup = d3.select(".popup");
-//     popup.classed("open", true);
-//     d3.select(".popup-description").text(`Details for ${node.id}`);
-// }
-
-function showPopup(node) {
-    const popup = d3.select(".popup");
-    popup.classed("open", true);
-
-    // Display content based on node type
-    const content = `
-        <h2>${node.id}</h2>
-        <p>${node.details}</p>
-        ${node.url ? `<a href="${node.url}" target="_blank">Read more</a>` : ''}
-        ${node.url && node.url.includes('youtube') ? `<iframe width="560" height="315" src="${node.url}" frameborder="0" allowfullscreen></iframe>` : ''}
+    // Create a more structured and visually appealing popup content
+    document.getElementById('popup-body').innerHTML = `
+        <div class="popup-image-container">
+            <img src="${imageUrl}" alt="${getLocalizedLabel(node)}" class="popup-image">
+            <div class="popup-image-overlay"></div>
+        </div>
+        <div class="popup-content-wrapper">
+            <div class="node-badge badge-${node.type}">${node.type.toUpperCase()}</div>
+            <h4 class="popup-node-title">${getLocalizedLabel(node)}</h4>
+            <div class="popup-description">${node.details || ''}</div>
+            ${node.url ? `
+                <div class="popup-footer">
+                    <a href="${node.url}" target="_blank" class="popup-link-btn">
+                        <span>${locales.read_more || 'Read More'}</span>
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                    </a>
+                </div>
+            ` : ''}
+        </div>
     `;
-    //document.body.style.backgroundImage = `url('${imageUrl}')`;
-    d3.select(".popup-description").html(content);
+    popup.classList.add('active');
 }
 
-document.getElementById("back-button").addEventListener("click", () => {
-    d3.select(".popup").classed("open", false);
-});
-
-// Drag functions
 function dragstarted(event, d) {
-    if (!event.active) simulation.alphaTarget(0.3).restart();
+    if (!event.active) simulation.alphaTarget(0.1).restart();
     d.fx = d.x;
     d.fy = d.y;
 }
@@ -223,22 +188,15 @@ function dragged(event, d) {
 }
 
 function dragended(event, d) {
-    if (!event.active) simulation.alphaTarget(0);
+    if (!event.active) simulation.alphaTarget(0.05); // Resume subtle motion
     d.fx = null;
     d.fy = null;
 }
 
-setInterval(() => {
-    updateDateTime();
-}, 1000);
-function getCurrentDateTime() {
-    const now = new Date();
-    return now.toLocaleString();
-}
-function updateDateTime() {
-    const centralNodeText = svg.select(`.node.node--central text`);
-    if (!centralNodeText.empty()) {
-        centralNodeText.text(getCurrentDateTime());
-    }
-}
+document.getElementById('lang-switcher').addEventListener('change', (e) => { currentLang = e.target.value; loadLocales(currentLang); });
+document.getElementById('search-input').addEventListener('input', () => renderNodeList(graphData.nodes));
+document.getElementById('popup-close').addEventListener('click', () => document.getElementById('details-popup').classList.remove('active'));
 
+socket.on('update', (data) => updateGraph(data));
+initViz();
+loadLocales('en');
